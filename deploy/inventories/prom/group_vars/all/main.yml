@@ -1,0 +1,8 @@
+postgres_container_name: audit-postgres
+postgres_image: postgres:17
+postgres_volume_name: audit-postgres-data
+postgres_network_name: audit-network
+postgres_db_name: audit
+postgres_app_user: audit_svc
+postgres_admin_password: "{{vault_postgres_admin_password}}"
+postgres_app_password: "{{vault_audit_svc_password}}"
