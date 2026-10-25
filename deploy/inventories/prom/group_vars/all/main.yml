@@ -6,3 +6,5 @@ postgres_db_name: audit
 postgres_app_user: audit_svc
 postgres_admin_password: "{{vault_postgres_admin_password}}"
 postgres_app_password: "{{vault_audit_svc_password}}"
+audit_svc_container_name: audit-svc
+audit_svc_image: "ghcr.io/sashaprovorova/audit-svc-final:main_bcebbb0"

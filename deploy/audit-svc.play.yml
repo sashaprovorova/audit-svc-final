@@ -51,12 +51,21 @@
           psql -U postgres -d postgres -c
           "CREATE ROLE {{ postgres_app_user }} LOGIN"
       when: postgres_user_check.stdout | trim != "1"
+    - name: get PostgreSQL container information
+      community.docker.docker_container_info:
+        name: "{{ postgres_container_name }}"
+      register: postgres_container_info
+      changed_when: false
     - name: set application database user password
-      community.docker.docker_container_exec:
-        container: "{{ postgres_container_name }}"
-        command: >-
-          psql -U postgres -d postgres -c
-          "ALTER ROLE {{ postgres_app_user }} PASSWORD '{{ postgres_app_password }}'"
+      community.postgresql.postgresql_user:
+        name: "{{ postgres_app_user }}"
+        password: "{{ postgres_app_password }}"
+        login_host: "{{ postgres_container_info.container.NetworkSettings.Networks[postgres_network_name].IPAddress }}"
+        login_port: 5432
+        login_user: postgres
+        login_password: "{{ postgres_admin_password }}"
+        login_db: postgres
+        state: present
       no_log: true
     - name: Check whether application database exists
       community.docker.docker_container_exec:
@@ -74,3 +83,54 @@
           psql -U postgres -d postgres -c
           "CREATE DATABASE {{ postgres_db_name }} OWNER {{ postgres_app_user }}"
       when: postgres_db_check.stdout | trim != "1"
+    - name: generate audit-svc configuration
+      ansible.builtin.template:
+        src: templates/config.yaml.j2
+        dest: /home/devops/audit-svc-config/config.yaml
+        mode: '0600'
+        owner: '10001'
+        group: '10001'
+      become: true
+      notify: Reload audit-svc configuration
+      no_log: true
+    - name: Start audit-svc application container
+      community.docker.docker_container:
+        name: "{{audit_svc_container_name}}"
+        image: "{{audit_svc_image}}"
+        state: started
+        restart_policy: unless-stopped
+        networks:
+          - name: "{{postgres_network_name}}"
+        volumes:
+          - /home/devops/audit-svc-config:/etc/audit-svc:ro
+        published_ports: []
+    - name: Start Nginx reverse proxy
+      community.docker.docker_container:
+        name: audit-nginx
+        image: nginx:alpine
+        state: started
+        restart_policy: unless-stopped
+        networks:
+          - name: "{{postgres_network_name}}"
+        volumes:
+          - "{{playbook_dir}}/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro"
+        published_ports:
+          - "80:80"
+    - name: Start Nginx Prometheus exporter
+      community.docker.docker_container:
+        name: audit-nginx-exporter
+        image: nginx/nginx-prometheus-exporter:1.4
+        state: started
+        restart_policy: unless-stopped
+        networks:
+          - name: "{{postgres_network_name}}"
+        command:
+          - "--nginx.scrape-uri=http://audit-nginx:8081/stub_status"
+        published_ports:
+          - "9113:9113"
+  handlers:
+    - name: Reload audit-svc configuration
+      community.docker.docker_container_exec:
+        container: audit-svc
+        command: >-
+          python -c "import urllib.request; urllib.request.urlopen(urllib.request.Request('http://127.0.0.1:8080/reload', method='POST'), timeout=10)"
