@@ -85,8 +85,10 @@ jobs:
           ANSIBLE_BECOME_PASSWORD: ${{ secrets.ANSIBLE_BECOME_PASSWORD }}
         run: |
           test -n "$ANSIBLE_BECOME_PASSWORD"
-          /home/devops/.pyenv/versions/ansible-hw/bin/ansible-playbook -i deploy/inventories/prom/hosts.yaml deploy/audit-svc.play.yml --vault-password-file "$RUNNER_TEMP/audit-vault-password" -e "audit_svc_image=ghcr.io/sashaprovorova/audit-svc-final:${GITHUB_REF_NAME}" -e '{"ansible_become_password": "{{ lookup("env", "ANSIBLE_BECOME_PASSWORD") }}"}'
-      - name: Remove temporary vault password file
+          printf '{"ansible_become_password": %s}\n' "$(python3 -c 'import json,os; print(json.dumps(os.environ["ANSIBLE_BECOME_PASSWORD"]))')" > "$RUNNER_TEMP/audit-become-vars.json"
+          chmod 600 "$RUNNER_TEMP/audit-become-vars.json"
+          /home/devops/.pyenv/versions/ansible-hw/bin/ansible-playbook -i deploy/inventories/prom/hosts.yaml deploy/audit-svc.play.yml --vault-password-file "$RUNNER_TEMP/audit-vault-password" -e "@$RUNNER_TEMP/audit-become-vars.json" -e "audit_svc_image=ghcr.io/sashaprovorova/audit-svc-final:${GITHUB_REF_NAME}"
+      - name: Remove temporary Ansible password files
         if: always()
         shell: bash
-        run: rm -f "$RUNNER_TEMP/audit-vault-password"
+        run: rm -f "$RUNNER_TEMP/audit-vault-password" "$RUNNER_TEMP/audit-become-vars.json"
