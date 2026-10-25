@@ -81,8 +81,11 @@ jobs:
 
       - name: Deploy release with Ansible
         shell: bash
+        env:
+          ANSIBLE_BECOME_PASSWORD: ${{ secrets.ANSIBLE_BECOME_PASSWORD }}
         run: |
-          /home/devops/.pyenv/versions/ansible-hw/bin/ansible-playbook -i deploy/inventories/prom/hosts.yaml deploy/audit-svc.play.yml --vault-password-file "$RUNNER_TEMP/audit-vault-password" -e "audit_svc_image=ghcr.io/sashaprovorova/audit-svc-final:${GITHUB_REF_NAME}"
+          test -n "$ANSIBLE_BECOME_PASSWORD"
+          /home/devops/.pyenv/versions/ansible-hw/bin/ansible-playbook -i deploy/inventories/prom/hosts.yaml deploy/audit-svc.play.yml --vault-password-file "$RUNNER_TEMP/audit-vault-password" -e "audit_svc_image=ghcr.io/sashaprovorova/audit-svc-final:${GITHUB_REF_NAME}" -e '{"ansible_become_password": "{{ lookup("env", "ANSIBLE_BECOME_PASSWORD") }}"}'
       - name: Remove temporary vault password file
         if: always()
         shell: bash
